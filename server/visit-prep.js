@@ -2,42 +2,45 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 
 const questionSchema = z.object({
-  text: z.string().trim().min(1).max(300),
-  category: z.enum(['labs', 'medicines', 'diagnosis', 'general']),
-  reason: z.string().trim().max(500),
-  sourceRef: z.string().max(120).nullable(),
+    text: z.string().trim().min(1).max(300),
+    category: z.enum(['labs', 'medicines', 'diagnosis', 'general']),
+    reason: z.string().trim().max(500),
+    sourceRef: z.string().max(120).nullable(),
 });
 const aiSchema = z.object({ questions: z.array(questionSchema).min(5).max(10) });
 const sessionSchema = z.object({
-  doctorName: z.string().trim().max(160).optional(),
-  visitDate: z.string().date().nullable().optional(),
-  reason: z.string().trim().max(500).optional(),
-  notes: z.string().max(12000).optional(),
-  symptoms: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
+    doctorName: z.string().trim().max(160).optional(),
+    visitDate: z.string().date().nullable().optional(),
+    reason: z.string().trim().max(500).optional(),
+    notes: z.string().max(12000).optional(),
+    symptoms: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
 }).strict();
 const names = { en: 'English', hi: 'Hindi' };
 
 function fallback(lang) {
-  const hindi = [
-    'क्या आप मेरी रिपोर्ट के परिणामों को आसान भाषा में समझा सकते हैं?',
-    'क्या आप मेरी मौजूदा दवाओं और पर्चे पर लिखे निर्देशों की समीक्षा कर सकते हैं?',
-    'क्या मेरी दर्ज स्वास्थ्य स्थितियों के लिए कोई नियमित जाँच पर चर्चा करनी चाहिए?',
-    'मुझे कब दोबारा संपर्क करना चाहिए और किन लक्षणों पर जल्दी मदद लेनी चाहिए?',
-  ];
-  const english = [
-    'Could you explain my recent results in plain language?',
-    'Could you review my current medicines and confirm the instructions on my prescriptions?',
-    'Are there routine checks I should discuss for my recorded health conditions?',
-    'When should I follow up, and what symptoms should prompt earlier care?',
-  ];
-  return (lang === 'hi' ? hindi : english).map((text) => ({
-    text, category: 'general', reason: lang === 'hi' ? 'आपकी मुलाकात के लिए सामान्य प्रश्न' : 'A general topic for your appointment.', sourceRef: null,
-  }));
+    const hindi = [
+        'क्या आप मेरी रिपोर्ट के परिणामों को आसान भाषा में समझा सकते हैं?',
+        'क्या आप मेरी मौजूदा दवाओं और पर्चे पर लिखे निर्देशों की समीक्षा कर सकते हैं?',
+        'क्या मेरी दर्ज स्वास्थ्य स्थितियों के लिए कोई नियमित जाँच पर चर्चा करनी चाहिए?',
+        'मुझे कब दोबारा संपर्क करना चाहिए और किन लक्षणों पर जल्दी मदद लेनी चाहिए?',
+    ];
+    const english = [
+        'Could you explain my recent results in plain language?',
+        'Could you review my current medicines and confirm the instructions on my prescriptions?',
+        'Are there routine checks I should discuss for my recorded health conditions?',
+        'When should I follow up, and what symptoms should prompt earlier care?',
+    ];
+    return (lang === 'hi' ? hindi : english).map((text) => ({
+        text,
+        category: 'general',
+        reason: lang === 'hi' ? 'आपकी मुलाकात के लिए सामान्य प्रश्न' : 'A general topic for your appointment.',
+        sourceRef: null,
+    }));
 }
 
 function reportReason(lab) {
-  const date = new Date(`${lab.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${lab.name} was ${lab.value} ${lab.unit}${date ? ` on ${date}` : ''}${lab.range ? ` (reference range ${lab.range})` : ''}.`;
+    const date = new Date(`${lab.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${lab.name} was ${lab.value} ${lab.unit}${date ? ` on ${date}` : ''}${lab.range ? ` (reference range ${lab.range})` : ''}.`;
 }
 
 function findWarnings(medicines) {
@@ -145,12 +148,14 @@ export function installVisitPrepRoutes(app, deps) {
       drugInteractionWarnings: ctx.interactionWarnings,
     };
     let generated;
-    const medicalKey = process.env.GEMINI_MEDICAL_API_KEY || process.env.GEMINI_API_KEY || '';
+    const useGroq = process.env.AI_PROVIDER === 'groq' || (process.env.AI_PROVIDER !== 'gemini' && !!(process.env.GROQ_MEDICAL_API_KEY || process.env.GROQ_API_KEY));
+    const medicalKey = useGroq ? process.env.GROQ_MEDICAL_API_KEY || process.env.GROQ_API_KEY || '' : process.env.GEMINI_MEDICAL_API_KEY || process.env.GEMINI_API_KEY || '';
+    const model = useGroq ? process.env.GROQ_MEDICAL_MODEL || 'openai/gpt-oss-120b' : process.env.GEMINI_MEDICAL_MODEL || 'gemini-3.8-flash';
     if (ctx.allowAI && process.env.ENABLE_EXTERNAL_AI === 'true' && medicalKey) {
       const prompt = `Write 5 to 10 distinct, short questions a patient can ask their clinician in ${names[language]}. Return JSON only with shape {"questions":[{"text":"...","category":"labs|medicines|diagnosis|general","reason":"...","sourceRef":null}]}. Use plain language. Never diagnose or give dosage advice. For a question about a stored fact, sourceRef must exactly match that fact's sourceRef. Use null for general questions. Do not invent or change any values. The reason for source-linked questions will be replaced with a sentence assembled from verified stored facts. Structured facts: ${JSON.stringify(facts)}`;
       for (let attempt = 0; attempt < 2 && !generated; attempt++) {
         try {
-          const response = await generateGemini({ key: medicalKey, model: process.env.GEMINI_MEDICAL_MODEL || 'gemini-3.8-flash', systemInstruction: 'You are an appointment-preparation assistant. You do not diagnose, prescribe or give dosage advice. Use only supplied structured facts. Return the requested JSON object.', contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1000 } });
+          const response = await generateGemini({ key: medicalKey, model, systemInstruction: 'You are an appointment-preparation assistant. You do not diagnose, prescribe or give dosage advice. Use only supplied structured facts. Return the requested JSON object.', contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1000 } });
           const raw = geminiText(response).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
           const parsed = aiSchema.parse(JSON.parse(raw));
           const seen = new Set();

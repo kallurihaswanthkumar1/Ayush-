@@ -36,6 +36,20 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MEDICAL_API_KEY
+        sync: false
+      - key: GROQ_VOICE_API_KEY
+        sync: false
+      - key: GROQ_MEDICAL_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_VISION_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GROQ_STT_MODEL
+        value: whisper-large-v3-turbo
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MEDICAL_API_KEY
