@@ -1,0 +1,43 @@
+{
+  "name": "healthcopilot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch server/server.js",
+    "dev:web": "vite --host 127.0.0.1 --configLoader native",
+    "start": "npm run db:setup && node server/server.js",
+    "db:setup": "node server/migrate.js",
+    "push:keys": "node server/generate-vapid.js",
+    "secrets": "node server/generate-secrets.js",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.11",
+    "compression": "^1.8.2",
+    "concurrently": "^10.0.6",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "express-session": "^1.19.0",
+    "file-type": "^22.1.1",
+    "helmet": "^8.3.0",
+    "multer": "^2.4.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pdfjs-dist": "^6.4.299",
+    "pg": "^8.23.1",
+    "tesseract.js": "^7.0.0",
+    "web-push": "^3.6.7",
+    "zod": "^4.6.5"
+  }
+}
