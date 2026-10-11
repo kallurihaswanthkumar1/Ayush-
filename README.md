@@ -14,6 +14,10 @@ Requirements: Node.js 22 or newer and PostgreSQL 14 or newer.
 6. In Google Cloud Console, add `http://localhost:5274` as an authorized origin and `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI.
 7. Run `npm run db:setup`, then `npm run dev`. Open `http://localhost:5274`.
 
+### Use VS Code Live Server (Go Live)
+
+The workspace Live Server settings proxy requests through the app server so sign-in and `/api` routes work from the Go Live origin. Run `npm run dev:live` in the VS Code terminal, then open `index.html` and click **Go Live**. Live Server is set to `http://localhost:5274`, matching the local Google OAuth origin. Stop `npm run dev` first if it is already using that port. `dev:live` builds the frontend, applies the database schema, and starts the API server; rerun it after frontend source changes so `dist` is rebuilt.
+
 ## Groq models and voice
 
 The default text model is `openai/gpt-oss-120b`; image/OCR requests use `qwen/qwen3.8-27b`; voice transcription uses `whisper-large-v3-turbo`. Override these with `GROQ_MEDICAL_MODEL`, `GROQ_VISION_MODEL`, and `GROQ_STT_MODEL`. Separate optional keys are `GROQ_MEDICAL_API_KEY` and `GROQ_VOICE_API_KEY`; if unset, the server uses `GROQ_API_KEY`.

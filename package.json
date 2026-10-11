@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --watch server/server.js",
+    "dev:live": "npm run build && npm run db:setup && node --watch server/server.js",
     "dev:web": "vite --host 127.0.0.1 --configLoader native",
     "start": "npm run db:setup && node server/server.js",
     "db:setup": "node server/migrate.js",

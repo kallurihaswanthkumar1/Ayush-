@@ -3,11 +3,23 @@ const API_ROOT = 'https://api.groq.com/openai/v1';
 async function groqRequest(url, key, options) {
     let response;
     for (let attempt = 0; attempt < 2; attempt++) {
-        response = await fetch(url, {
-            ...options,
-            headers: { Authorization: `Bearer ${key}`, ...(options.headers || {}) },
-            signal: AbortSignal.timeout(90000),
-        });
+        try {
+            response = await fetch(url, {
+                ...options,
+                headers: { Authorization: `Bearer ${key}`, ...(options.headers || {}) },
+                signal: AbortSignal.timeout(90000),
+            });
+        } catch (cause) {
+            if (attempt === 0) {
+                await new Promise((resolve) => setTimeout(resolve, 350));
+                continue;
+            }
+            throw Object.assign(new Error('The AI provider could not be reached.'), {
+                status: 502,
+                providerStatus: 502,
+                cause,
+            });
+        }
         if (response.status < 500 || attempt === 1) return response;
         await new Promise((resolve) => setTimeout(resolve, 350));
     }

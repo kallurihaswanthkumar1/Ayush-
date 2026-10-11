@@ -154,7 +154,7 @@ app.post('/auth/logout', requireAuth, asyncRoute(async(req, res) => {
 }));
 app.get('/api/me', asyncRoute(async(req, res) => {
     try { await pool.query('SELECT 1') } catch { return res.status(503).json({ error: 'PostgreSQL is not reachable. Start a database and set its real connection URL in .env before signing in.' }) }
-    res.json({ authenticated: !!req.user, user: req.user ? { id: req.user.id, email: req.user.email, name: req.user.display_name, avatar: req.user.avatar_url } : null, googleConfigured: !!process.env.GOOGLE_CLIENT_ID })
+    res.json({ authenticated: !!req.user, user: req.user ? { id: req.user.id, email: req.user.email, name: req.user.display_name, avatar: req.user.avatar_url } : null, googleConfigured: !!process.env.GOOGLE_CLIENT_ID, developmentMode: process.env.NODE_ENV === 'development' })
 }));
 app.get('/api/profiles', requireAuth, asyncRoute(async(req, res) => {
     const r = await pool.query('SELECT id,name,relationship,date_of_birth,abha_mock_id,created_at FROM family_profiles WHERE owner_id=$1 ORDER BY created_at', [req.user.id]);
@@ -438,6 +438,18 @@ app.get('/api/profiles/:profileId/export.fhir.json', requireAuth, asyncRoute(asy
     await audit(req.user.id, p.id, 'fhir.export');
     res.set('Content-Disposition', `attachment; filename="healthcopilot-${p.id}.json"`).json({ resourceType: 'Bundle', type: 'collection', timestamp: new Date().toISOString(), entry: entries.map(resource => ({ resource })) })
 }));
+function aiOfflineNotice(lang) {
+    const messages = {
+        en: 'The AI service could not be reached. This reply uses only records saved in this profile and cannot answer general health questions.',
+        hi: 'AI सेवा से संपर्क नहीं हो सका। यह जवाब केवल इस प्रोफ़ाइल में सहेजे गए रिकॉर्ड पर आधारित है; यह सामान्य स्वास्थ्य प्रश्नों का उत्तर नहीं दे सकता।',
+        te: 'AI సేవను చేరుకోలేకపోయాము. ఈ సమాధానం ఈ ప్రొఫైల్‌లోని రికార్డులపై మాత్రమే ఆధారపడింది; సాధారణ ఆరోగ్య ప్రశ్నలకు సమాధానం ఇవ్వదు।',
+        ta: 'AI சேவையை அணுக முடியவில்லை. இந்தப் பதில் இந்தச் சுயவிவரத்தில் சேமிக்கப்பட்ட பதிவுகளை மட்டுமே பயன்படுத்துகிறது; பொதுவான சுகாதாரக் கேள்விகளுக்குப் பதிலளிக்காது.',
+        kn: 'AI ಸೇವೆಯನ್ನು ಸಂಪರ್ಕಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಈ ಉತ್ತರವು ಈ ಪ್ರೊಫೈಲ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ದಾಖಲೆಗಳನ್ನು ಮಾತ್ರ ಬಳಸುತ್ತದೆ; ಸಾಮಾನ್ಯ ಆರೋಗ್ಯ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸುವುದಿಲ್ಲ.',
+        ml: 'AI സേവനവുമായി ബന്ധപ്പെടാനായില്ല. ഈ മറുപടി ഈ പ്രൊഫൈലിൽ സൂക്ഷിച്ച രേഖകൾ മാത്രം ഉപയോഗിക്കുന്നു; പൊതുവായ ആരോഗ്യ ചോദ്യങ്ങൾക്ക് മറുപടി നൽകില്ല.'
+    };
+    return messages[lang] || messages.en;
+}
+
 app.post('/api/profiles/:profileId/chat', requireAuth, asyncRoute(async(req, res) => {
     if (!await ownedProfile(req.user.id, req.params.profileId)) return res.status(404).json({ error: 'Profile not found.' });
     const body = z.object({
@@ -461,7 +473,7 @@ app.post('/api/profiles/:profileId/chat', requireAuth, asyncRoute(async(req, res
             const answer = geminiText(ai);
             if (answer) reply = answer.replace(/\*\*(.*?)\*\*/g, '$1').replace(/(^|\n)#{1,6}\s*/g, '$1').replace(/[`*_]/g, '')
         } catch (e) {
-            console.error('Health Agent Gemini request failed:', e.providerStatus || e.status || e.name || 'error', e.message);
+            console.error('Health Agent AI request failed:', e.providerStatus || e.status || e.name || 'error', e.message);
             if (e.providerStatus === 429 || e.providerStatus >= 500) {
                 const offlineNotice = {
                     en: 'AI is temporarily unavailable. This reply uses only records saved in this profile; it cannot answer general health questions.',
@@ -471,7 +483,7 @@ app.post('/api/profiles/:profileId/chat', requireAuth, asyncRoute(async(req, res
                     kn: 'AI ಈಗ ಲಭ್ಯವಿಲ್ಲ. ಈ ಉತ್ತರವು ಈ ಪ್ರೊಫೈಲ್‌ನಲ್ಲಿರುವ ದಾಖಲೆಗಳನ್ನು ಮಾತ್ರ ಬಳಸುತ್ತದೆ; ಸಾಮಾನ್ಯ ಆರೋಗ್ಯ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸುವುದಿಲ್ಲ.',
                     ml: 'AI ഇപ്പോൾ ലഭ്യമല്ല. ഈ മറുപടി ഈ പ്രൊഫൈലിലെ രേഖകൾ മാത്രം ഉപയോഗിക്കുന്നു; പൊതുവായ ആരോഗ്യ ചോദ്യങ്ങൾക്ക് മറുപടി നൽകില്ല.'
                 };
-                reply = `${localAnswer(q, docs, lang)}\n\n${offlineNotice[lang] || offlineNotice.en}`;
+                reply = `${localAnswer(q, docs, lang)}\n\n${aiOfflineNotice(lang)}`;
             } else {
                 throw Object.assign(new Error(e.message || 'Gemini is temporarily unavailable.'), { status: e.status || 502 });
             }
